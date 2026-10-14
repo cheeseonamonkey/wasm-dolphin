@@ -970,7 +970,7 @@ function wireKeyboard() {
   window.addEventListener("blur", () => {
     if (keyboardPressed.size) {
       keyboardPressed.clear();
-      syncInput("Keyboard");
+      syncInput(gamepadPressed.size ? "Gamepad" : touchPressed.size ? "Touch" : "Keyboard");
     }
   });
 }

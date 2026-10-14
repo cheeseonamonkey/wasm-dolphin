@@ -10,11 +10,15 @@ const wireKeyboard = source.slice(start, end);
 
 test("blur releases held keyboard buttons without requiring keyup", () => {
   const keys = new Set();
+  const touch = new Set();
+  const gamepad = new Set();
   const documentHandlers = new Map();
   const windowHandlers = new Map();
   const snapshots = [];
   runInNewContext(wireKeyboard + "\nwireKeyboard()", {
     keyboardPressed: keys,
+    touchPressed: touch,
+    gamepadPressed: gamepad,
     document: { addEventListener(type, fn) { documentHandlers.set(type, fn); } },
     window: { addEventListener(type, fn) { windowHandlers.set(type, fn); } },
     resolveKeyboardButton(code) { return code === "KeyW" ? "UP" : null; },
@@ -24,7 +28,9 @@ test("blur releases held keyboard buttons without requiring keyup", () => {
       else next.delete(button);
       return next;
     },
-    syncInput() { snapshots.push([...keys]); }
+    syncInput(source) {
+      snapshots.push({ source, pressed: [...new Set([...keys, ...touch, ...gamepad])] });
+    }
   });
 
   documentHandlers.get("keydown")({
@@ -34,9 +40,28 @@ test("blur releases held keyboard buttons without requiring keyup", () => {
   assert.ok(windowHandlers.has("blur"), "missing window blur release handler");
   windowHandlers.get("blur")();
   assert.deepEqual([...keys], []);
-  assert.deepEqual(snapshots.at(-1), []);
+  assert.deepEqual(snapshots.at(-1), { source: "Keyboard", pressed: [] });
 
   // A late keyup should remain harmless.
   documentHandlers.get("keyup")({ code: "KeyW", preventDefault() {} });
   assert.deepEqual([...keys], []);
+
+  // An idle blur should not send another input update.
+  const updates = snapshots.length;
+  windowHandlers.get("blur")();
+  assert.equal(snapshots.length, updates);
+
+  const pressW = () => documentHandlers.get("keydown")({
+    code: "KeyW", repeat: false, preventDefault() {}
+  });
+  gamepad.add("B");
+  pressW();
+  windowHandlers.get("blur")();
+  assert.deepEqual(snapshots.at(-1), { source: "Gamepad", pressed: ["B"] });
+
+  gamepad.clear();
+  touch.add("A");
+  pressW();
+  windowHandlers.get("blur")();
+  assert.deepEqual(snapshots.at(-1), { source: "Touch", pressed: ["A"] });
 });
